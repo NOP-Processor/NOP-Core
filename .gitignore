@@ -1,0 +1,11 @@
+.vscode/
+.metals/
+.bloop/
+out/
+target/
+project/
+.bsp/
+.idea/
+tmp
+/build/
+linux_run.tar

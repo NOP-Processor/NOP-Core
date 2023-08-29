@@ -1,0 +1,152 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  VIVADO_DIR: "/opt/Xilinx/Vivado/2019.2"
+  VIVADO: "${VIVADO_DIR}/bin/vivado"
+  TEAM_ROOT: "./nscscc-team-la32r"
+  FUNC_ROOT: "${TEAM_ROOT}/func_test"
+  PERF_ROOT: "${TEAM_ROOT}/perf_test"
+  SYSTEM_ROOT: "${TEAM_ROOT}/perf_test"
+  FUNC_RESULT: "${TEAM_ROOT}/func_result"
+  PERF_RESULT: "${TEAM_ROOT}/perf_result"
+  SYSTEM_RESULT: "${TEAM_ROOT}/system_result"
+  CPU_DIR: "./build"
+  IP_DIR: "./xilinx_ip"
+  SCRIPT_DIR: "./.ci-scripts"
+  JOBS_NUMBER: "8"
+  # PLL_FREQ: "95"
+  SEARCH_ITERATION: "4"
+  SEARCH_LOWER: "94.0"
+  SEARCH_UPPER: "110.0"
+  # SEARCH_LOWER: "50.0"
+  # SEARCH_UPPER: "66.0"
+  SUBMISSION_NAME: "LoongArch_THU_1_liumingdao"
+
+stages:
+  - build
+  - synth_impl
+  - release
+
+generate_verilog:
+  stage: build
+  image: mill-loongarch32r-linux-gnusf:latest
+  tags:
+    - vivado
+  script:
+    - mill NOP.runMain NOP.Main
+    - cp -r build original_build
+    - SRC_ROOT=${CPU_DIR} bash ${SCRIPT_DIR}/verilog_preprocess.sh
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - build
+      - original_build
+
+config_release:
+  stage: build
+  image: mill-loongarch32r-linux-gnusf:latest
+  tags:
+    - vivado
+  variables:
+    SHELL: bin/bash
+  script:
+    - git clone https://gitee.com/loongson-edu/nscscc-team-la32r.git --recurse-submodules ${TEAM_ROOT}
+    - bash ${SCRIPT_DIR}/config_release.sh
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - ${TEAM_ROOT}
+
+func_test_bitstream:
+  stage: synth_impl
+  image: vivado:2019.2
+  tags:
+    - vivado
+  dependencies:
+    - generate_verilog
+    - config_release
+  script:
+    - bash ${SCRIPT_DIR}/init_func_test.sh
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - ${FUNC_RESULT}
+
+# perf_test_bitstream:
+#   stage: synth_impl
+#   image: vivado:2019.2
+#   tags:
+#     - vivado
+#   dependencies:
+#     - generate_verilog
+#     - config_release
+#   script:
+#     - bash ${SCRIPT_DIR}/init_perf_test.sh
+#   artifacts:
+#     name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+#     when: always
+#     paths:
+#       - ${PERF_RESULT}
+
+perf_test_bitstream:
+  stage: synth_impl
+  image: vivado:2019.2
+  tags:
+    - vivado
+  dependencies:
+    - generate_verilog
+    - config_release
+  script:
+    - bash ${SCRIPT_DIR}/search.sh
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - ${PERF_RESULT}
+
+system_test_bitstream:
+  stage: synth_impl
+  image: system_test_scratch:latest
+  tags:
+    - vivado
+  dependencies:
+    - generate_verilog
+  script:
+    - bash ${SCRIPT_DIR}/init_system_test.sh
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - ${SYSTEM_RESULT}
+
+qualifirer_submission:
+  stage: release
+  image: mill-loongarch32r-linux-gnusf:latest
+  tags:
+    - vivado
+  dependencies:
+    - func_test_bitstream
+    - perf_test_bitstream
+    - generate_verilog
+  script:
+    # config directories
+    - mkdir -p submission/${SUBMISSION_NAME}/bit/func_test/soc_axi_func
+    - mkdir -p submission/${SUBMISSION_NAME}/bit/perf_test
+    - mkdir -p submission/${SUBMISSION_NAME}/src/mycpu/
+    # - mkdir -p submission/${SUBMISSION_NAME}/sram_src/mycpu
+    # copy synth_impl
+    - cp ${FUNC_RESULT}/*.bit submission/${SUBMISSION_NAME}/bit/func_test/soc_axi_func/
+    - cp ${PERF_RESULT}/*.bit submission/${SUBMISSION_NAME}/bit/perf_test/
+    # copy perf clock
+    - cp ${PERF_RESULT}/perf_clk_pll.xci submission/${SUBMISSION_NAME}/src/
+    # copy source
+    - cp ${CPU_DIR}/*.v submission/${SUBMISSION_NAME}/src/mycpu/
+    # copy IP cores
+    - cp ${IP_DIR}/*.xci submission/${SUBMISSION_NAME}/src/mycpu/
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - submission
