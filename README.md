@@ -59,7 +59,7 @@ Also see our:
 - SoC Design: [NOP-SoC](https://github.com/NOP-Processor/NOP-SoC)
 - PMON Adaptation: [NOP-PMON](https://github.com/NOP-Processor/NOP-PMON)
 - Linux Adaptation: [NOP-Linux](https://github.com/NOP-Processor/NOP-Linux)
-
+- Submission and Presentation Objects: [NOP-Misc](https://github.com/NOP-Processor/NOP-Misc)
 
 ## Acknowledgement
 
